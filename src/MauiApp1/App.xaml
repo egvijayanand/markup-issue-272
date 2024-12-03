@@ -14,7 +14,7 @@
                 <ResourceDictionary Source="Resources/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
             <!-- Additional Styles -->
-            <x:Double x:Key="ItemSpacing">10</x:Double>
+            <x:Double x:Key="ItemSpacing">15</x:Double>
 
             <Style ApplyToDerivedTypes="True" TargetType="StackBase">
                 <Setter Property="Spacing"

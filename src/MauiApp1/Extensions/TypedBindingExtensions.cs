@@ -1,92 +1,69 @@
 ﻿using System.Linq.Expressions;
-using System.Reflection;
 
-namespace MauiApp1.Extensions
+namespace MauiApp1.Extensions;
+
+public static partial class TypedBindingExtensions
 {
-    public static partial class TypedBindingExtensions
+    // Since the package-defined DefaultProperties is not accessible outside
+    // So, have defined a similar one - To be reused
+    private static readonly Dictionary<string, BindableProperty> DefaultProperties = new()
     {
-        /// <summary>Binds to the default bindable property.</summary>
-        /// <param name="expression">Lambda expression of the source property to bind to.</param>
-        public static TBindable Bindv2<TBindable, TBindingContext, TSource>(
-            this TBindable bindable,
-            Expression<Func<TBindingContext, TSource>> expression,
-            BindingMode mode = BindingMode.Default,
-            IValueConverter? converter = null,
-            object? converterParameter = null,
-            string? stringFormat = null,
-            object? source = null,
-            object? targetNullValue = null,
-            object? fallbackValue = null)
-            where TBindable : BindableObject
+        { "Microsoft.Maui.Controls.Label", Label.TextProperty },
+        { "Microsoft.Maui.Controls.Picker", Picker.SelectedIndexProperty }
+    };
+
+    /// <summary>Binds to the default bindable property.</summary>
+    public static TBindable BindV2<TBindable, TBindingContext, TSource>(
+        this TBindable bindable,
+        Expression<Func<TBindingContext, TSource>> getter,
+        Action<TBindingContext, TSource>? setter = null,
+        BindingMode mode = BindingMode.Default,
+        string? stringFormat = null,
+        TBindingContext? source = default)
+        where TBindable : BindableObject
+        where TBindingContext : class?
+    {
+        // Since it's a class derived from BindableObject, FullName can't be null.
+        var typeName = typeof(TBindable).FullName!;
+        if (!DefaultProperties.TryGetValue(typeName, out var targetProperty))
         {
-            bindable.Bind(PropertyName(expression),
-                          mode,
-                          converter,
-                          converterParameter,
-                          stringFormat,
-                          source,
-                          targetNullValue,
-                          fallbackValue);
-            return bindable;
+            throw new InvalidOperationException($"Default bindable property is not defined for the type - {typeName}.");
         }
 
-        /// <summary>Binds to the specified bindable property.</summary>
-        /// <param name="expression">Lambda expression of the source property to bind to.</param>
-        public static TBindable Bindv2<TBindable, TBindingContext, TSource>(
-            this TBindable bindable,
-            BindableProperty property,
-            Expression<Func<TBindingContext, TSource>> expression,
-            BindingMode mode = BindingMode.Default,
-            IValueConverter? converter = null,
-            object? converterParameter = null,
-            string? stringFormat = null,
-            object? source = null,
-            object? targetNullValue = null,
-            object? fallbackValue = null)
-            where TBindable : BindableObject
+        // User can still provide their own setter definition
+        // If undefined, the toolkit will add the default implementation
+        // That just assigns the updated value back to the same property
+        if (setter is null)
         {
-            bindable.Bind(property,
-                          PropertyName(expression),
-                          mode,
-                          converter,
-                          converterParameter,
-                          stringFormat,
-                          source,
-                          targetNullValue,
-                          fallbackValue);
-            return bindable;
-        }
-
-        /// <summary>Parses the lambda expression and returns the property name.</summary>
-        /// <param name="expression">Lambda expression of the source property to bind to.</param>
-        static string PropertyName<TSource, TProperty>(Expression<Func<TSource, TProperty>> expression)
-        {
-            MemberExpression? memExp;
-
-            if (expression.Body is UnaryExpression unExp)
+            // Include the setter only if it is defined as two-way or if the mode is overridden.
+            if (targetProperty.DefaultBindingMode == BindingMode.TwoWay || mode == BindingMode.TwoWay)
             {
-                if (unExp.NodeType == ExpressionType.Convert)
-                {
-                    memExp = (MemberExpression)unExp.Operand;
-                    return memExp.Member.Name;
-                }
+                // Already defined in the toolkit to retrieve the member name - To be reused
+                // Assuming MemberExpression for sample
+                var propertyName = ((MemberExpression)getter.Body).Member.Name;
+                var param1 = Expression.Parameter(typeof(TBindingContext), "context");
+                var param2 = Expression.Parameter(typeof(TSource), "value");
+                var memExp = Expression.Property(param1, propertyName);
+                var assignExp = Expression.Assign(memExp, param2);
+                // TODO: Need to check whether the action can be a static lambda
+                var action = Expression.Lambda<Action<TBindingContext, TSource>>(assignExp, [param1, param2]).Compile();
+
+                // Structure of the generated definition
+                // setter = (TBindingContext context, TSource value) => context.Property = value;
+                setter = action;
             }
-
-            memExp = (MemberExpression)expression.Body;
-            var propMemExp = memExp;
-
-            string path = string.Empty;
-
-            while (memExp is not null && memExp?.Expression?.NodeType == ExpressionType.MemberAccess)
-            {
-                var propInfo = memExp.Expression.GetType().GetProperty("Member");
-                var propValue = propInfo?.GetValue(memExp.Expression, null) as PropertyInfo;
-                path = $"{propValue?.Name}.{path}";
-
-                memExp = memExp.Expression as MemberExpression;
-            }
-
-            return path + propMemExp.Member.Name;
         }
+
+        // Invokes one of the overloads from the package, with value for the targetProperty and setter.
+        return bindable.Bind<TBindable, TBindingContext, TSource, object?, object?>(
+            targetProperty,
+            getter,
+            setter,
+            mode,
+            null,
+            null,
+            null,
+            stringFormat,
+            source);
     }
 }
