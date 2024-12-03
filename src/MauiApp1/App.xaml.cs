@@ -1,19 +1,9 @@
-﻿namespace MauiApp1
+﻿namespace MauiApp1;
+
+public partial class App : Application
 {
-    public partial class App : Application
-    {
-        public App()
-        {
-            InitializeComponent();
+    public App() => InitializeComponent();
 
-            MainPage = new NavigationPage(new MainPage());
-        }
-
-        protected override Window CreateWindow(IActivationState? activationState)
-        {
-            var window = base.CreateWindow(activationState);
-            window.Title = "MauiApp1";
-            return window;
-        }
-    }
+    protected override Window CreateWindow(IActivationState? activationState)
+    => new(new NavigationPage(new MainPage())) { Title = "MauiApp1" };
 }
